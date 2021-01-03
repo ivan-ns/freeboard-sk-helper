@@ -29,6 +29,11 @@ const CONFIG_SCHEMA= {
             title: "Course",
             type: "object",
             description: 'Provider for: courseGreatCircle: activeRoute, nextPoint, previousPoint',
+        },
+        autoNext: {
+            type: 'boolean',
+            title: 'Automatically switch to next route point',
+            default: false
         }
     }
 }
@@ -69,7 +74,8 @@ module.exports = (server: ServerAPI): ServerPlugin=> {
         previousPoint: { 
             position: null
         }     
-    };          
+    };
+    let autoNext: any; //automatically switch next point when reached
     let grib: GribStore= new GribStore();
    
     // ******** REQUIRED PLUGIN DEFINITION *******
@@ -190,7 +196,8 @@ module.exports = (server: ServerAPI): ServerPlugin=> {
                         watcher.value= v.value;
                     }
                 })
-            );    
+            );
+            autoNext = options.autoNext;
             let msg:string= 'Started';       
             if(typeof server.setPluginStatus === 'function') { server.setPluginStatus(msg) }
             else { server.setProviderStatus(msg) }
@@ -360,52 +367,54 @@ module.exports = (server: ServerAPI): ServerPlugin=> {
             )
         ); 
         notifier.start();
+        if(autoNext) {
                 let routes = server.getSelfPath('resources.routes');
-        server.debug('!!!!!!!!! ROUTES !!!!!!!!!');
-        server.debug(routes);
-        server.debug('!!!!!!! ACTIVE ROUTE !!!!!!!!');
-        let activeRouteHref = server.getSelfPath('navigation.courseGreatCircle.activeRoute.href');
-        server.debug(activeRouteHref);
-        let activeRouteKey = activeRouteHref.value.split('/')[3];
-        server.debug(`active route key ${activeRouteKey}`);
-        let activeRouteData = routes[activeRouteKey];
-        server.debug('!!!!!!!! ACTIVE ROUTE DATA !!!!!!!!!!!!');
-        server.debug(activeRouteData);
-        let routePoints = activeRouteData.value.feature.geometry.coordinates;
-        server.debug('!!!!!!!!!!!!!! ROUTE POINTS !!!!!!!!!!!!!');
-        server.debug(routePoints);
-        server.debug('!!!!!!!!!!!!! NAV DATA !!!!!!!!!!!!!!!!');
-        let nextP = navData.nextPoint.position;
-        server.debug('!!!!!!!!!! NEXT POINT !!!!!!!!!!!!!!!!');
-        server.debug(nextP);
-        let prevP = navData.previousPoint.position;
-        server.debug('!!!!!!!!!!  PREVIOUS POINT !!!!!!!!!!!!!!!!');
-        server.debug(prevP);
-        server.debug('!!!!!!!! POINT INDEX !!!!!!!!!!!!!!!');
-        function checkPoint(value) {
-                return value[0] === nextP.longitude && value[1] === nextP.latitude
-        }
-        let pIndex = routePoints.findIndex(checkPoint);
-        server.debug(pIndex);
-        if( (routePoints.length - 1) > pIndex) {
-                server.debug('<<<<<<<<<<<<<<<<<< SETTING NEXT POINT >>>>>>>>>>>>>>>>>>>>>>');
-                setPreviousPoint(nextP);
-                let valPrev= [ {path: 'navigation.courseGreatCircle.previousPoint.position', value: nextP} ];
-                server.handleMessage(plugin.id, {updates: [ {values: valPrev} ] });
-                let newNextP = {};
-                newNextP.latitude = routePoints[pIndex + 1][1];
-                newNextP.longitude = routePoints[pIndex + 1][0];
-                setNextPoint(newNextP);
-                let valNext= [ {path: 'navigation.courseGreatCircle.nextPoint.position', value: newNextP} ];
-                server.handleMessage(plugin.id, {updates: [ {values: valNext} ] });
-                if(db) {
-                        server.debug(`** persisitng navData **\n${navData}`);
-                        updateRecord(db, 'navData', navData)
-                        .then( (r)=> {
-                                if(r.error) { newRecord(db, 'navData', navData) }
-                                });
+                server.debug('!!!!!!!!! ROUTES !!!!!!!!!');
+                server.debug(routes);
+                server.debug('!!!!!!! ACTIVE ROUTE !!!!!!!!');
+                let activeRouteHref = server.getSelfPath('navigation.courseGreatCircle.activeRoute.href');
+                server.debug(activeRouteHref);
+                let activeRouteKey = activeRouteHref.value.split('/')[3];
+                server.debug(`active route key ${activeRouteKey}`);
+                let activeRouteData = routes[activeRouteKey];
+                server.debug('!!!!!!!! ACTIVE ROUTE DATA !!!!!!!!!!!!');
+                server.debug(activeRouteData);
+                let routePoints = activeRouteData.value.feature.geometry.coordinates;
+                server.debug('!!!!!!!!!!!!!! ROUTE POINTS !!!!!!!!!!!!!');
+                server.debug(routePoints);
+                server.debug('!!!!!!!!!!!!! NAV DATA !!!!!!!!!!!!!!!!');
+                let nextP = navData.nextPoint.position;
+                server.debug('!!!!!!!!!! NEXT POINT !!!!!!!!!!!!!!!!');
+                server.debug(nextP);
+                let prevP = navData.previousPoint.position;
+                server.debug('!!!!!!!!!!  PREVIOUS POINT !!!!!!!!!!!!!!!!');
+                server.debug(prevP);
+                server.debug('!!!!!!!! POINT INDEX !!!!!!!!!!!!!!!');
+                function checkPoint(value) {
+                        return value[0] === nextP.longitude && value[1] === nextP.latitude
                 }
-        }
+                let pIndex = routePoints.findIndex(checkPoint);
+                server.debug(pIndex);
+                if( (routePoints.length - 1) > pIndex) {
+                        server.debug('<<<<<<<<<<<<<<<<<< SETTING NEXT POINT >>>>>>>>>>>>>>>>>>>>>>');
+                        setPreviousPoint(nextP);
+                        let valPrev= [ {path: 'navigation.courseGreatCircle.previousPoint.position', value: nextP} ];
+                        server.handleMessage(plugin.id, {updates: [ {values: valPrev} ] });
+                        let newNextP = {};
+                        newNextP.latitude = routePoints[pIndex + 1][1];
+                        newNextP.longitude = routePoints[pIndex + 1][0];
+                        setNextPoint(newNextP);
+                        let valNext= [ {path: 'navigation.courseGreatCircle.nextPoint.position', value: newNextP} ];
+                        server.handleMessage(plugin.id, {updates: [ {values: valNext} ] });
+                        if(db) {
+                                server.debug(`** persisitng navData **\n${navData}`);
+                                updateRecord(db, 'navData', navData)
+                                .then( (r)=> {
+                                        if(r.error) { newRecord(db, 'navData', navData) }
+                                        });
+                        }
+                }
+          }
     }
 
     watcher.onExitRange= (val:number)=> {
